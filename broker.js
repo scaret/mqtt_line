@@ -1,4 +1,5 @@
 var mows     = require("mows");
+var mqtt     = require("mqtt");
 
 // callback for all the servers. They should work exactly the same
 var callback_createServer = function (client)
@@ -7,8 +8,9 @@ var callback_createServer = function (client)
     if (!self.clients) self.clients = {};
 
     //.........................................................
-    var callback_connect = function (client)
+    var callback_connect = function (packet)
     {
+        var client = this;
         client.connack({returnCode: 0});
         //trust the client and accept the clientId
         client.id = packet.clientId;
@@ -78,6 +80,10 @@ var callback_createServer = function (client)
 // creates the mqtt websocket server
 var server = mows.createServer(callback_createServer);
 server.listen(8080);
+
+// create the mqtt server
+var mqttServer = mqtt.createServer(callback_createServer);
+server.listen(1883);
 
 ///////////////////////////////////////////////////////////////////////////////////////
 // For debug, create a client, listen to all topics, and log all the message
