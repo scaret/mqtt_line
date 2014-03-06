@@ -1,73 +1,93 @@
 var mows     = require("mows");
 
-var server = mows.createServer(function(client){
-var self = this;
+// callback for all the servers. They should work exactly the same
+var callback_createServer = function (client)
+{
+    var self = this;
+    if (!self.clients) self.clients = {};
 
-  if (!self.clients) self.clients = {};
+    //.........................................................
+    var callback_connect = function (client)
+    {
+        client.connack({returnCode: 0});
+        //trust the client and accept the clientId
+        client.id = packet.clientId;
+        self.clients[client.id] = client;
+        client.subscriptions = [];
+    };
+    //.........................................................
+    var callback_subscribe = function (packet)
+    {
+        var granted = [];
+        for (var i = 0; i < packet.subscriptions.length; i++) {
+            var qos   = packet.subscriptions[i].qos;
+            var topic = packet.subscriptions[i].topic;
+            //from MQTT rule to JavaScript regexp
+            // needs further config later.
+            var reg   = new RegExp(topic.replace('+', '[^\/]+').replace('#', '.+').replace("*","\S*") + '$');
+            granted.push(packet.subscriptions[i].qos);
+            client.subscriptions.push(reg);
+        }
+        client.suback({granted: granted, messageId: packet.messageId});
+    };
+    //.........................................................
+    var callback_publish = function (packet)
+    {
+        var validation = function(client, topic)
+        {
+            return client.subscriptions.some(function(reg){
+                return reg.test(topic);
+            });
+        }
+        ///////////////////////////////////////////////////////
+        for (var k in self.clients)
+        {
+            var the_client = clients[k];
+            if (validation(the_client, packet.topic))
+            {
+                the_client.publish({topic: packet.topic, payload: packet.payload});
+            }
+        }
+    };
 
-  client.on('connect', function(packet) {
-    client.connack({returnCode: 0});
-    client.id = packet.clientId;
-    self.clients[client.id] = client;
-    client.subscriptions = [];
-  });
+    ///////////////////////////////////////////////////////////
+    client.on('connect', callback_connect);
+    client.on('subscribe', callback_subscribe);
+    client.on('publish', callback_publish);
 
-  client.on('publish', function(packet) {
 
-  	var validation = function(client, topic)
-  	{
-  		return client.subscriptions.some(function(reg){
-  			return reg.test(topic);
-  		});
-  	}
+    client.on('pingreq', function(packet) {
+        client.pingresp();
+    });
 
-    for (var k in self.clients) {
-    	if(validation(clients[k],packet.topic))
-      		self.clients[k].publish({topic: packet.topic, payload: packet.payload});
-    }
-  });
+    client.on('disconnect', function(packet) {
+        client.stream.end();
+    });
 
-  client.on('subscribe', function(packet) {
-    var granted = [];
-    for (var i = 0; i < packet.subscriptions.length; i++) {
-    	var qos = packet.subscriptions[i].qos
-        	, topic = packet.subscriptions[i].topic
-        	, reg = new RegExp(topic.replace('+', '[^\/]+').replace('#', '.+').replace("*","\S*") + '$');
-      	granted.push(packet.subscriptions[i].qos);
-      	client.subscriptions.push(reg);
-    }
+    client.on('close', function(err) {
+        delete self.clients[client.id];
+    });
 
-    client.suback({granted: granted, messageId: packet.messageId});
-  });
+    client.on('error', function(err) {
+        client.stream.end();
+        console.log('error!');
+    });
+}
 
-  client.on('pingreq', function(packet) {
-    client.pingresp();
-  });
+///////////////////////////////////////////////////////////////////////////////////////
+// creates the mqtt websocket server
+var server = mows.createServer(callback_createServer);
+server.listen(8080);
 
-  client.on('disconnect', function(packet) {
-    client.stream.end();
-  });
+///////////////////////////////////////////////////////////////////////////////////////
+// For debug, create a client, listen to all topics, and log all the message
+var client   = mows.createClient("ws://localhost:8080");
+client.subscribe("+");
 
-  client.on('close', function(err) {
-    delete self.clients[client.id];
-  });
-
-  client.on('error', function(err) {
-    client.stream.end();
-    console.log('error!');
-  });
-});
-
-server.listen(12345);
-
-//////////////////////////////////////////////////////////
-var client   = mows.createClient("ws://localhost:12345");
-client.subscribe("/a/b/c/+");
-client.publish("/a/b/c/presence","Hello mqtt");
-
+//.................................................
 var callback_message = function (topic, message)
 {
 	console.log("TOPIC:",topic, "MESSAGE:",message);
 }
-
+///////////////////////////////////////////////////
 client.on("message", callback_message);
