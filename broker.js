@@ -13,7 +13,7 @@ var callback_createServer = function (client)
         var client = this;
         client.connack({returnCode: 0});
         //trust the client and accept the clientId
-        client.id = packet.clientId;
+        client.id = packet.clientId || "default";
         self.clients[client.id] = client;
         client.subscriptions = [];
     };
@@ -45,7 +45,7 @@ var callback_createServer = function (client)
         for (var k in self.clients)
         {
             var the_client = clients[k];
-            if (validation(the_client, packet.topic))
+            if (the_client && validation(the_client, packet.topic))
             {
                 the_client.publish({topic: packet.topic, payload: packet.payload});
             }
@@ -83,17 +83,25 @@ server.listen(8080);
 
 // create the mqtt server
 var mqttServer = mqtt.createServer(callback_createServer);
-server.listen(1883);
+mqttServer.listen(1883);
 
-///////////////////////////////////////////////////////////////////////////////////////
-// For debug, create a client, listen to all topics, and log all the message
-var client   = mows.createClient("ws://localhost:8080");
-client.subscribe("+");
+var websocket_client  = mows.createClient("ws://localhost:8080");
+websocket_client.subscribe("+");
+var mqtt_pure_client  = mqtt.createClient();
+mqtt_pure_client.subscribe("+");
 
-//.................................................
-var callback_message = function (topic, message)
+websocket_client.on("message", function (topic, message)
 {
-	console.log("TOPIC:",topic, "MESSAGE:",message);
-}
-///////////////////////////////////////////////////
-client.on("message", callback_message);
+    console.log("8080 TOPIC:",topic, "MESSAGE:",message);
+    setTimeout(function(){
+        mqtt_pure_client.publish(topic, message);
+    },1000);
+});
+
+mqtt_pure_client.on("message", function (topic, message)
+{
+    console.log("1883 TOPIC:",topic, "MESSAGE:",message);
+    setTimeout(function(){
+        websocket_client.publish(topic, message);
+    },1000);
+});
