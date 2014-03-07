@@ -1,10 +1,13 @@
 var mows     = require("mows");
 var mqtt     = require("mqtt");
 
+var servers = [];
+
 // callback for all the servers. They should work exactly the same
 var callback_createServer = function (client)
 {
     var self = this;
+    servers.push(this);
     if (!self.clients) self.clients = {};
 
     //.........................................................
@@ -44,15 +47,18 @@ var callback_createServer = function (client)
             });
         }
         ///////////////////////////////////////////////////////
-        for (var k in self.clients)
-        {
-            var the_client = self.clients[k];
-            if (the_client && validation(the_client, packet.topic))
-            {
-                the_client.publish({topic: packet.topic, payload: packet.payload});
-                console.log("  distribute:%s => ( [%s], %s )", the_client.id, packet.topic, packet.payload);
-            }
+        for(var s in servers){
+          for (var k in servers[s].clients)
+          {
+              var the_client = servers[s].clients[k];
+              if (the_client && validation(the_client, packet.topic))
+              {
+                  the_client.publish({topic: packet.topic, payload: packet.payload});
+                  console.log("  distribute:%s => ( [%s], %s )", the_client.id, packet.topic, packet.payload);
+              }
+          }
         }
+
     };
 
     ///////////////////////////////////////////////////////////
@@ -87,61 +93,3 @@ server.listen(8080);
 // create the mqtt server
 var mqttServer = mqtt.createServer(callback_createServer);
 mqttServer.listen(1883);
-
-var ws2mqtt_forwarder = mows.createClient("ws://localhost:8080");
-ws2mqtt_forwarder.subscribe("#");
-var mqtt2ws_forwarder = mqtt.createClient();
-mqtt2ws_forwarder.subscribe("#");
-
-ws2mqtt_forwarder.on("message",function(topic, message){
-    if (topic.substr(0,8) == "/forward")
-    {
-        // do nothing
-    }
-    else
-    {
-        mqtt2ws_forwarder.publish("/forward" + topic, message);
-    }
-});
-
-mqtt2ws_forwarder.on("message",function(topic, message){
-    if (topic.substr(0,8) == "/forward")
-    {
-        // do nothing
-    }
-    else
-    {
-        ws2mqtt_forwarder.publish("/forward" + topic, message);
-    }
-});
-
-/*
-var websocket_client  = mows.createClient("ws://localhost:8080");
-websocket_client.subscribe("+");
-var mqtt_pure_client  = mqtt.createClient();
-mqtt_pure_client.subscribe("+");
-
-websocket_client.on("connect", function(){
-  websocket_client.publish("helloworld","from websocket");
-});
-
-websocket_client.on("message", function (topic, message)
-{
-    console.log("  8080 TOPIC:",topic, "MESSAGE:",message);
-    setTimeout(function(){
-        mqtt_pure_client.publish(topic, message);
-    },1000);
-});
-
-mqtt_pure_client.on("connect", function(){
-  mqtt_pure_client.publish("helloworld","from websocket");
-});
-
-mqtt_pure_client.on("message", function (topic, message)
-{
-    console.log("  1883 TOPIC:",topic, "MESSAGE:",message);
-    setTimeout(function(){
-        websocket_client.publish(topic, message);
-    },1000);
-});
-*/
